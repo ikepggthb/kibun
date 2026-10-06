@@ -1,26 +1,32 @@
 import { BY_ID } from '../dishes.ts';
 import { chars, dateline, h } from '../dom.ts';
+import { icon } from '../icons.ts';
 import { figure } from '../photo.ts';
 import { kicker, type Pick } from '../recommend.ts';
 import { store } from '../store.ts';
+import { swipe } from '../swipe.ts';
 
 const SIZES = '(min-width: 900px) 55vw, 100vw';
-/** Fraction of the width past which letting go counts as a decision. */
 const THRESHOLD = 0.28;
-const FLICK = 0.6; // px per ms
+/** Set once the swipe has been shown, so it plays on the first visit only. */
+const COACHED = 'kibun:coached';
 
 export function deck(root: HTMLElement): () => void {
-  const tally = h('b');
+  const count = h('span', { class: 'count' });
   const table = h('div', { class: 'table' });
-  const undoBtn = h('button', { class: 'undo', type: 'button', onclick: () => store.undo() }, '一つ戻す');
-  const skipBtn = h('button', { class: 'skip', type: 'button', onclick: () => fling(-1) }, h('span', { 'aria-hidden': 'true' }, '←'), ' 見送る');
-  const keepBtn = h('button', { class: 'keep', type: 'button', onclick: () => fling(1) }, '候補に入れる ', h('span', { 'aria-hidden': 'true' }, '→'));
+  const undoBtn = h('button', { class: 'undo', type: 'button', 'aria-label': '一つ戻す', onclick: () => store.undo() },
+    icon('undo'));
+  const skipBtn = h('button', { class: 'skip', type: 'button', onclick: () => fling(-1) },
+    h('span', { class: 'disc' }, icon('x')), h('span', { class: 'label' }, '見送る'));
+  const keepBtn = h('button', { class: 'keep', type: 'button', onclick: () => fling(1) },
+    h('span', { class: 'disc' }, icon('heart', true)), h('span', { class: 'label' }, '候補に入れる'));
 
   root.replaceChildren(
     h('header', { class: 'mast' },
       h('a', { class: 'brand', href: '#' }, 'Kibun'),
       h('span', { class: 'dateline' }, dateline()),
-      h('a', { class: 'tally', href: '#list', 'aria-live': 'polite' }, '候補 ', tally)),
+      h('a', { class: 'to-list', href: '#list', 'aria-live': 'polite' },
+        icon('heart', true), '候補リスト', count, icon('next'))),
     table,
     h('nav', { class: 'verdict', 'aria-label': '判定' }, skipBtn, undoBtn, keepBtn),
   );
@@ -34,8 +40,8 @@ export function deck(root: HTMLElement): () => void {
     return h('article', { class: 'page', 'data-id': p.id },
       h('div', { class: 'frame' },
         figure(dish, { sizes: SIZES, priority: top ? 'high' : 'low' }),
-        h('span', { class: 'hint hint-keep', 'aria-hidden': 'true' }, '候補へ'),
-        h('span', { class: 'hint hint-skip', 'aria-hidden': 'true' }, '見送り')),
+        h('span', { class: 'hint hint-keep', 'aria-hidden': 'true' }, icon('heart', true), '候補へ'),
+        h('span', { class: 'hint hint-skip', 'aria-hidden': 'true' }, icon('x'), '見送り')),
       h('div', { class: 'caption' },
         h('p', { class: 'kicker' }, kicker(p.reason),
           from && h('span', { class: 'from' }, `${from.name}から`)),
@@ -46,35 +52,36 @@ export function deck(root: HTMLElement): () => void {
 
   function render(): void {
     const s = store.get();
-    tally.textContent = String(s.shortlist.length);
+    count.textContent = String(s.shortlist.length);
+    count.classList.toggle('zero', s.shortlist.length === 0);
     undoBtn.disabled = !store.canUndo();
     const ids = s.table.map((p) => p.id);
     for (const [id, el] of pages) {
-      if (!ids.includes(id) && !el.classList.contains('gone')) { el.remove(); pages.delete(id); }
+      if (!ids.includes(id)) { el.remove(); pages.delete(id); }
     }
     s.table.forEach((p, i) => {
       let el = pages.get(p.id);
       if (!el) {
         el = page(p, i === 0);
         pages.set(p.id, el);
-        table.prepend(el); // underneath whatever is already there
+        table.prepend(el);
       }
       el.classList.toggle('top', i === 0);
-      el.setAttribute('aria-hidden', String(i !== 0));
       el.inert = i !== 0;
     });
     skipBtn.disabled = keepBtn.disabled = ids.length === 0;
     if (ids.length === 0 && !table.querySelector('.empty')) {
       table.append(h('div', { class: 'empty' },
-        h('p', { class: 'kicker' }, 'ひととおり'),
-        h('h2', { class: 'name' }, '全部見ました'),
-        h('p', { class: 'blurb' }, h('a', { href: '#list' }, '候補から選ぶ'), ' か、 ',
-          h('button', { class: 'link', type: 'button', onclick: () => store.restart() }, '最初から'))));
+        h('h2', { class: 'headline' }, '全部見ました'),
+        h('p', { class: 'actions' },
+          h('a', { class: 'btn', href: '#list' }, '候補リストへ', icon('next')),
+          h('button', { class: 'btn quiet', type: 'button', onclick: () => store.restart() }, '最初から'))));
     } else if (ids.length) table.querySelector('.empty')?.remove();
   }
 
   /** Send the top page off to one side and record the verdict. */
   function fling(dir: 1 | -1): void {
+    stopCoach();
     const top = store.get().table[0];
     const el = top && pages.get(top.id);
     if (!el) return;
@@ -90,48 +97,42 @@ export function deck(root: HTMLElement): () => void {
   }
 
   function bump(): void {
-    tally.classList.remove('bump');
-    void tally.offsetWidth;
-    tally.classList.add('bump');
+    count.classList.remove('bump');
+    void count.offsetWidth;
+    count.classList.add('bump');
   }
 
-  // Dragging: only horizontal intent takes over; vertical movement scrolls.
-  let drag: { el: HTMLElement; x: number; y: number; t: number; w: number; dx: number; on: boolean } | null = null;
+  swipe(table, {
+    target: '.page.top',
+    threshold: THRESHOLD,
+    dirs: [1, -1],
+    onDrag: (el, dx, w) => { stopCoach(); el.style.setProperty('--pull', (dx / (w * THRESHOLD)).toFixed(3)); },
+    onEnd: (el, dir) => (dir ? fling(dir) : el.style.removeProperty('--pull')),
+  });
 
-  table.addEventListener('pointerdown', (e) => {
-    const el = (e.target as Element).closest<HTMLElement>('.page.top');
-    if (!el || e.button !== 0) return;
-    drag = { el, x: e.clientX, y: e.clientY, t: e.timeStamp, w: el.offsetWidth, dx: 0, on: false };
-  });
-  table.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const dx = e.clientX - drag.x;
-    if (!drag.on) {
-      if (Math.abs(e.clientY - drag.y) > 10 && Math.abs(e.clientY - drag.y) > Math.abs(dx)) { drag = null; return; }
-      if (Math.abs(dx) < 6) return;
-      drag.on = true;
-      drag.el.setPointerCapture(e.pointerId);
-      drag.el.classList.add('dragging');
-    }
-    drag.dx = dx;
-    drag.el.style.transform = `translate3d(${dx}px, 0, 0)`;
-    drag.el.style.setProperty('--pull', (dx / (drag.w * THRESHOLD)).toFixed(3));
-  });
-  const release = (e: PointerEvent) => {
-    if (!drag) return;
-    const { el, dx, w, t, on } = drag;
-    drag = null;
-    if (!on) return;
-    el.classList.remove('dragging');
-    const v = Math.abs(dx) / Math.max(1, e.timeStamp - t);
-    if (Math.abs(dx) > w * THRESHOLD || (v > FLICK && Math.abs(dx) > 30)) fling(dx > 0 ? 1 : -1);
-    else { el.style.transform = ''; el.style.removeProperty('--pull'); }
-  };
-  table.addEventListener('pointerup', release);
-  table.addEventListener('pointercancel', release);
+  // First visit: the top page sways right then left by itself, with a hand,
+  // to show that it can be swiped. Any touch, key or button stops it.
+  let coach: HTMLElement | null = null;
+  function startCoach(): void {
+    try { if (localStorage.getItem(COACHED)) return; } catch { return; }
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    coach = h('div', { class: 'coach', 'aria-hidden': 'true' },
+      h('span', { class: 'finger' }),
+      h('p', null, h('span', null, icon('x'), '左で見送る'), h('span', null, '右で候補に', icon('heart', true))));
+    table.append(coach);
+    table.classList.add('coaching');
+    coach.addEventListener('animationend', stopCoach, { once: true });
+  }
+  function stopCoach(): void {
+    if (!coach) return;
+    coach.remove();
+    coach = null;
+    table.classList.remove('coaching');
+    try { localStorage.setItem(COACHED, '1'); } catch { /* fine */ }
+  }
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'ArrowRight') fling(1);
     else if (e.key === 'ArrowLeft') fling(-1);
     else if (e.key === 'z' || e.key === 'Backspace') store.undo();
@@ -139,5 +140,6 @@ export function deck(root: HTMLElement): () => void {
   addEventListener('keydown', onKey);
   const off = store.subscribe(render);
   render();
+  startCoach();
   return () => { off(); removeEventListener('keydown', onKey); };
 }

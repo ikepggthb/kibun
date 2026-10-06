@@ -1,5 +1,6 @@
 import { BY_ID } from '../dishes.ts';
 import { chars, dateline, h } from '../dom.ts';
+import { icon } from '../icons.ts';
 import { figure } from '../photo.ts';
 import { store } from '../store.ts';
 
@@ -19,10 +20,10 @@ export function today(root: HTMLElement): () => void {
         h('p', { class: 'pre' }, '今日は、'),
         h('h1', { class: 'name', style: chars(dish.name) }, dish.name),
         h('p', { class: 'blurb' }, dish.blurb),
-        h('p', { class: 'next' },
-          h('a', { class: 'primary', href: maps, target: '_blank', rel: 'noopener' }, '近くのお店を探す ↗'),
-          h('a', { href: '#list' }, '候補に戻る'),
-          h('button', { class: 'link', type: 'button', onclick: () => { store.restart(); location.hash = ''; } }, '最初から')))),
+        h('div', { class: 'actions' },
+          h('a', { class: 'btn', href: maps, target: '_blank', rel: 'noopener' }, icon('pin'), '近くのお店を探す'),
+          h('a', { class: 'btn quiet', href: '#list' }, icon('back'), '候補リストに戻る'),
+          h('button', { class: 'link', type: 'button', onclick: () => { store.restart(); location.hash = ''; } }, icon('undo'), '最初から')))),
   );
   return () => {};
 }

@@ -4,6 +4,7 @@
  */
 import { BY_ID } from '../dishes.ts';
 import { h } from '../dom.ts';
+import { icon } from '../icons.ts';
 import { figure } from '../photo.ts';
 import { store } from '../store.ts';
 
@@ -26,13 +27,13 @@ export function compare(root: HTMLElement): () => void {
     const side = (id: string) => {
       const dish = BY_ID.get(id)!;
       return h('button', { class: 'side', type: 'button', onclick: () => { champ = id; queue.shift(); render(); } },
-        figure(dish, { sizes: '(min-width: 900px) 40vw, 50vw', max: 960, priority: 'high' }),
+        figure(dish, { sizes: '(min-width: 900px) 40vw, 50vw', priority: 'high' }),
         h('span', { class: 'name' }, dish.name));
     };
     root.replaceChildren(
       h('header', { class: 'mast' },
-        h('a', { class: 'back', href: '#list' }, '← 候補へ'),
-        h('span', { class: 'dateline' }, `${rounds - queue.length + 1} / ${rounds}`)),
+        h('a', { class: 'back', href: '#list' }, icon('back'), '候補リスト'),
+        h('span', { class: 'dateline' }, `${rounds - queue.length + 1} / ${rounds} 回目`)),
       h('section', { class: 'duel' },
         h('h1', { class: 'headline' }, 'どっちの気分？'),
         h('p', { class: 'lede' }, '残したいほうをタップ。'),
@@ -40,7 +41,7 @@ export function compare(root: HTMLElement): () => void {
     );
     // Warm the next challenger so the following round appears at once.
     const after = queue[1] && BY_ID.get(queue[1]);
-    if (after) figure(after, { sizes: '(min-width: 900px) 40vw, 50vw', max: 960, priority: 'low' });
+    if (after) figure(after, { sizes: '(min-width: 900px) 40vw, 50vw', priority: 'low' });
   }
   render();
   return () => {};

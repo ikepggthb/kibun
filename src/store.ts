@@ -76,6 +76,11 @@ export const store = {
     commit(s, true);
   },
 
+  /** Empty the shortlist and let the mood start again from nothing. */
+  clear(): void {
+    commit({ ...state, shortlist: [], steps: [], sinceDetour: 0, chosen: null }, true);
+  },
+
   choose(id: string | null): void {
     commit({ ...state, chosen: id });
   },
